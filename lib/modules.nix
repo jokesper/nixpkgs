@@ -547,7 +547,8 @@ let
             n: x:
             let
               module = checkModule (loadModule args parentFile "${parentKey}:anon-${toString n}" x);
-              collectedImports = collectStructuredModules module._file module.key module.imports args;
+              imports = concatLists (pushDownProperties module.imports);
+              collectedImports = collectStructuredModules module._file module.key imports args;
             in
             {
               key = module.key;
@@ -1349,10 +1350,12 @@ let
   */
   pushDownProperties =
     let
-      mapAttrsIfAttrs =
+      mapAttrsIfAttrsOrList =
         f: val:
         if isAttrs val then
           mapAttrs f val
+        else if isList val then # When pushing down top-level mkIf through imports
+          map (f 0) val # Not quite correct
         else
           # This does not actually work, since arriving here means we have e.g.
           # (lib.mkIf cond nonAttrs), while an attrset is expected. However,
@@ -1363,9 +1366,9 @@ let
     if cfg._type or "" == "merge" then
       concatMap pushDownProperties cfg.contents
     else if cfg._type or "" == "if" then
-      map (mapAttrsIfAttrs (n: v: mkIf cfg.condition v)) (pushDownProperties cfg.content)
+      map (mapAttrsIfAttrsOrList (n: v: mkIf cfg.condition v)) (pushDownProperties cfg.content)
     else if cfg._type or "" == "override" then
-      map (mapAttrsIfAttrs (n: v: mkOverride cfg.priority v)) (pushDownProperties cfg.content)
+      map (mapAttrsIfAttrsOrList (n: v: mkOverride cfg.priority v)) (pushDownProperties cfg.content)
     # FIXME: handle mkOrder?
     else
       [ cfg ];
